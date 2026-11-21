@@ -1,0 +1,27 @@
+{
+  "seviyeler": {
+    "Kolay": {
+      "hak": 8, "ipucu": 3, "carpan": 1, "ceza": 1, "gosterilen_tahmin": 8, "hizli_tur_serisi": 2,
+      "renk": "#227548", "harita": "Zümrüt Patikası",
+      "hikaye": "Ormanın feneri söndü. Hazineye ulaş ve feneri yeniden yak.",
+      "son": "Fener yandı ve gezginler evlerinin yolunu buldu."
+    },
+    "Orta": {
+      "hak": 6, "ipucu": 2, "carpan": 1, "ceza": 2, "gosterilen_tahmin": 1, "hizli_tur_serisi": 2,
+      "renk": "#89571e", "harita": "Kuzey Geçidi",
+      "hikaye": "Buzullar kuzey geçidini kapattı. Hazinedeki anahtarı bul ve geçidi aç.",
+      "son": "Anahtar buz kapısını açtı ve kuzey yolu yeniden açıldı."
+    },
+    "Zor": {
+      "hak": 4, "ipucu": 1, "carpan": 2, "ceza": 4, "gosterilen_tahmin": 0, "hizli_tur_serisi": 1,
+      "renk": "#a63c4d", "harita": "Kor Ateş Yolu",
+      "hikaye": "Yanardağ uyanıyor. Zirveye çık ve kor taşını köye geri getir.",
+      "son": "Kor taşı yerine kondu ve yanardağ sakinleşti."
+    }
+  },
+  "duraklar": [
+    {"ad": "Orman", "puan": 0, "simge": "🌲", "zemin": "#173d33", "yol": "#65bd8c", "resim": "orman.png"},
+    {"ad": "Buzul", "puan": 9, "simge": "❄", "zemin": "#254564", "yol": "#8ccbea", "resim": "buzul.png"},
+    {"ad": "Volkan", "puan": 17, "simge": "▲", "zemin": "#59343e", "yol": "#f89e77", "resim": "volkan.png", "yatay_odak": 0.9}
+  ]
+}
