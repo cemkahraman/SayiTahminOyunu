@@ -179,7 +179,9 @@ class TkinterPuanlamaTesti(unittest.TestCase):
                 self.oyun.toplam = onceki_toplam
                 self.tahmin_gonder("100")
                 self.assertIsNone(self.arayuz.tur_zamanlayicisi)
-                self.assertIn("Hazineyi buldun!", self.gorunen_metin(self.arayuz.geri_bildirim))
+                bildirim = self.gorunen_metin(self.arayuz.geri_bildirim)
+                self.assertIn("Hazineyi buldun!", bildirim)
+                self.assertIn("+10 puan", bildirim)
                 self.assertEqual(self.gorunen_metin(self.arayuz.durum), f"{beklenen} / 25 puan")
                 canvas = self.arayuz.ilerleme
                 self.assertEqual(canvas.coords(canvas.find_all()[0])[2], canvas.winfo_width())
@@ -189,6 +191,14 @@ class TkinterPuanlamaTesti(unittest.TestCase):
                 if beklenen == 25:
                     self.arayuz.yeni_oyun()
                     self.arayuz.oyunu_baslat("Orta")
+
+    def test_galibiyet_mesaji_son_turun_gercek_odulunu_gosterir(self):
+        self.oyun.toplam = 16
+        self.tahmin_gonder("90")
+        self.tahmin_gonder("100")
+        bildirim = self.gorunen_metin(self.arayuz.geri_bildirim)
+        self.assertIn("Hazineyi buldun! +9 puan", bildirim)
+        self.assertEqual(self.oyun.toplam, 25)
 
     def test_sure_biterken_gonderilen_tahmin_tek_ceza_alir(self):
         for once_tahmin in (True, False):
@@ -234,3 +244,45 @@ class TkinterPuanlamaTesti(unittest.TestCase):
         self.assertIn("İlk tahminde 10 puan", metin)
         self.assertIn("her tahminde kazanacağın puan 1 azalır", metin)
         self.assertIn("Zor seviyede kazanç iki katına çıkar", metin)
+
+    def test_basari_kaydi_zor_kilidi_ve_yeni_macerada_uyarlama(self):
+        self.oyun.uyarlanabilir = True
+        self.arayuz.yeni_oyun()
+        self.assertEqual(self.arayuz.seviye_butonlari["Zor"].cget("state"), "disabled")
+        self.arayuz.oyunu_baslat("Zor")
+        self.assertEqual(self.arayuz.ekran, "menu")
+        self.arayuz.oyunu_baslat("Orta")
+
+        self.tahmin_gonder("100")
+        self.assertEqual(self.kayit.basarilar(), {"hatasiz_tur", "hiz_canavari"})
+        self.assertFalse(self.kayit.zor_acik())
+        self.assertIn("Hatasız Tur", self.gorunen_metin(self.arayuz.basari_yazisi))
+        self.sonraki_turu_ac()
+        self.tahmin_gonder("100")
+        self.sonraki_turu_ac()
+        self.tahmin_gonder("100")
+        self.assertIn("ilk_galibiyet", MaceraKaydi(self.kayit.yol).basarilar())
+
+        self.arayuz.yeni_oyun()
+        self.assertEqual(self.arayuz.seviye_butonlari["Zor"].cget("state"), "normal")
+        self.arayuz.seviye_butonlari["Zor"].invoke()
+        self.assertEqual(self.oyun.zorluk, "Zor")
+        self.assertIn("1200", self.arayuz.tur_yazisi.cget("text"))
+        self.assertEqual(self.oyun.tur_cezasi, 5)
+
+    def test_tahmin_izi_ve_hikaye_gecerli_tur_sonuclarini_izler(self):
+        ilk_hikaye = self.arayuz.hikaye_yazisi.cget("text")
+        for metin in ("90", "90", "xyz", "95"):
+            self.tahmin_gonder(metin)
+        self.assertEqual(self.arayuz.harita.tahmin_izleri, [90])
+        self.tahmin_gonder("100")
+        self.assertNotEqual(self.arayuz.hikaye_yazisi.cget("text"), ilk_hikaye)
+        self.assertTrue(self.arayuz.harita.find_withtag("parilti"))
+        self.sonraki_turu_ac()
+        self.assertEqual(self.arayuz.harita.tahmin_izleri, [])
+
+        for _ in range(2):
+            self.zaman = self.oyun.son_zaman
+            self.arayuz.sureyi_denetle()
+            self.sonraki_turu_ac()
+        self.assertIn("Tipi", self.arayuz.hikaye_yazisi.cget("text"))

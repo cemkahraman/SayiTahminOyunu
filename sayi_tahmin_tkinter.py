@@ -4,12 +4,14 @@ from math import ceil
 from time import monotonic
 from tkinter import ttk
 
+from macera_denetleyicisi import MaceraDenetleyicisi, TahminDegerlendirildi, TurBasladi
 from macera_haritasi import MaceraHaritasi
-from macera_kaydi import MaceraKaydi
+from macera_kaydi import BASARILAR, MaceraKaydi
 from macera_sahnesi import MaceraSahnesi, SahneYazisi
 from macera_sesi import MaceraSesi
 from oyun_kurallari import (
-    DINAMIK_SAYI_ADIMI, DONDURMA_SURESI, DURAKLAR, EN_BUYUK_SAYI, EN_KUCUK_SAYI, GUCLENDIRICILER,
+    DINAMIK_SAYI_ADIMI, DINAMIK_TUR_SERISI, DONDURMA_SURESI, EN_BUYUK_SAYI, EN_KUCUK_SAYI,
+    GUCLENDIRICILER,
     HEDEF_PUAN, HIZLI_TUR_HAKKI, HIZLI_TUR_SURESI, Oyun, SAYI_ADIMI,
     SEVIYELER, TUR_SURESI,
     seviye_ozeti, yakinlik_araliklari,
@@ -26,10 +28,11 @@ KIRMIZI = "#ffaaa8"
 
 
 class SayiTahminOyunu:
-    def __init__(self, pencere, oyun=None, kayit=None):
+    def __init__(self, pencere: tk.Tk, oyun: Oyun | None = None, kayit: MaceraKaydi | None = None):
         self.pencere = pencere
-        self.oyun = oyun if oyun is not None else Oyun(sureli=True)
+        self.oyun = oyun if oyun is not None else Oyun(sureli=True, uyarlanabilir=True)
         self.kayit = kayit if kayit is not None else MaceraKaydi()
+        self.denetleyici = MaceraDenetleyicisi(self.oyun, self.kayit, self.oyun_olayini_goster)
         self.ses = MaceraSesi()
         self.ekran = None
         self.donulecek_ekran = "menu"
@@ -62,6 +65,14 @@ class SayiTahminOyunu:
         self.galeri_butonu.pack(side="right", padx=6)
         self.ses_butonu = self.baglanti(alt, "", self.ses_degistir)
         self.ses_butonu.pack(side="right")
+        self.ses_paneli = tk.Frame(alt, bg=ZEMIN)
+        self.ses_kaydiricisi = tk.Scale(
+            self.ses_paneli, from_=0, to=100, orient="horizontal", length=150,
+            bg=ZEMIN, fg=METIN, troughcolor=PANEL, highlightthickness=0,
+            label="Ses düzeyi", command=self.ses_duzeyini_degistir,
+        )
+        self.ses_kaydiricisi.set(self.ses.duzey)
+        self.ses_kaydiricisi.pack()
         if not self.ses.destekleniyor:
             self.ses_butonu.configure(state="disabled")
         self.ses_dugmesini_guncelle()
@@ -94,17 +105,17 @@ class SayiTahminOyunu:
                         fg=renk, bg=zemin, **ayarlar)
 
     @staticmethod
-    def buton(ebeveyn, metin, komut, renk="#2c473e"):
+    def buton(ebeveyn, metin, komut, renk="#2c473e", *, etkin_renk="#3d5c50"):
         return tk.Button(ebeveyn, text=metin, command=komut, font=("Segoe UI", 10, "bold"),
-                         fg="white", bg=renk, activebackground="#3d5c50", activeforeground="white",
+                         fg="white", bg=renk, activebackground=etkin_renk, activeforeground="white",
                          disabledforeground="#a3b3a9", relief="flat", padx=9, pady=5, cursor="hand2")
 
     def baglanti(self, ebeveyn, metin, komut):
         return SahneYazisi(self.sahne, ebeveyn, metin, 10, "bold", komut=komut)
 
     @staticmethod
-    def bolum(ebeveyn):
-        return tk.Frame(ebeveyn, bg=PANEL, padx=13, pady=7)
+    def bolum(ebeveyn, zemin=PANEL):
+        return tk.Frame(ebeveyn, bg=zemin, padx=13, pady=7)
 
     def paragraf(self, ebeveyn, metin, renk=IKINCIL):
         yazi = self.etiket(ebeveyn, metin, renk=renk, justify="left", anchor="w")
@@ -136,19 +147,25 @@ class SayiTahminOyunu:
         secimler = tk.Frame(ebeveyn, bg=ZEMIN)
         secimler.pack(fill="x", pady=(0, 11))
         self.seviye_butonlari = {}
+        kart_renkleri = {
+            "Orta": ("#203849", "#b9e6ff", "#3a7398"),
+            "Zor": ("#3c2323", "#ffc0a0", "#a94a37"),
+        }
         for i, (ad, ayar) in enumerate(SEVIYELER.items()):
             secimler.columnconfigure(i, weight=1, uniform="seviye")
-            kart = self.bolum(secimler)
+            kart_zemini, baslik_rengi, etkin_renk = kart_renkleri.get(ad, (PANEL, ALTIN, "#3d5c50"))
+            kart = self.bolum(secimler, kart_zemini)
             kart.grid(row=0, column=i, sticky="nsew", padx=4)
-            b = self.buton(kart, ad, lambda secim=ad: self.oyunu_baslat(secim), ayar["renk"])
+            b = self.buton(kart, ad, lambda secim=ad: self.oyunu_baslat(secim),
+                           ayar["renk"], etkin_renk=etkin_renk)
             b.pack(fill="x", pady=(0, 5))
             self.seviye_butonlari[ad] = b
-            self.etiket(kart, ayar["harita"], 11, "bold", ALTIN).pack(anchor="w")
+            self.etiket(kart, ayar["harita"], 11, "bold", baslik_rengi).pack(anchor="w")
             self.paragraf(kart, ayar["hikaye"])
             ozet = seviye_ozeti(ayar).replace(" · Başarısız", "\nBaşarısız")
             self.paragraf(kart, ozet, METIN)
 
-        bilgi = self.bolum(ebeveyn)
+        bilgi = self.bolum(ebeveyn, "#252d2d")
         bilgi.pack(fill="x", padx=4)
         self.etiket(bilgi, "Nasıl oynanır?", 13, "bold").pack(anchor="w")
         self.paragraf(bilgi, f"Her turda gizli sayıyı bul. Orman, buzul ve volkanı geçip {HEDEF_PUAN} puanda hazineye ulaş.")
@@ -156,6 +173,8 @@ class SayiTahminOyunu:
                              f"arasındadır ve başlangıçta {SAYI_ADIMI}'un katıdır. "
                              "Geçersiz ve tekrarlanan girişler tahmin hakkı harcamaz.")
         self.paragraf(bilgi, "İpucu için T, kurallar ve yakınlık aralıkları için I tuşunu kullan.")
+        self.zor_kilit_yazisi = self.etiket(bilgi, renk=ALTIN)
+        self.zor_kilit_yazisi.pack(anchor="w")
 
     def oyun_ekrani_kur(self, ebeveyn):
         ust = self.sahne.yuzey(ebeveyn)
@@ -169,6 +188,8 @@ class SayiTahminOyunu:
         self.ilerleme.bind("<Configure>", lambda _olay: self.ilerlemeyi_ciz())
         self.harita = MaceraHaritasi(ebeveyn, height=105, bg=PANEL, highlightthickness=0)
         self.harita.pack(fill="x")
+        self.hikaye_yazisi = self.etiket(ebeveyn, boyut=10, renk=IKINCIL, justify="center")
+        self.hikaye_yazisi.pack(fill="x", pady=(3, 0))
 
         self.sayi_dogrusu_kutu = self.bolum(ebeveyn)
         self.sayi_dogrusu_baslik = self.etiket(self.sayi_dogrusu_kutu, boyut=9, stil="bold", renk=IKINCIL)
@@ -205,6 +226,7 @@ class SayiTahminOyunu:
         self.yakinlik_ipucu = self.etiket(ebeveyn, boyut=10, bg="#eaf1dc", renk="#172720", padx=8, pady=4)
         self.istatistik = SahneYazisi(self.sahne, ebeveyn, boyut=10, fg=IKINCIL)
         self.istatistik.pack()
+        self.basari_yazisi = SahneYazisi(self.sahne, ebeveyn, boyut=10, fg=ALTIN)
         self.tekrar_butonu = self.baglanti(ebeveyn, "Tekrar oyna", self.yeni_oyun)
 
         self.gucler = self.sahne.yuzey(ebeveyn)
@@ -224,7 +246,10 @@ class SayiTahminOyunu:
         for ad, ayar in SEVIYELER.items():
             self.etiket(icerik, f"{ad} · {seviye_ozeti(ayar)}", boyut=10).pack(anchor="w")
         self.paragraf(icerik, "Sayı doğrusu Kolay'da tüm tahminleri, Orta'da son tahmini gösterir. "
-                             "Zor'da yalnızca Gözlem kullanıldığında açılır.")
+                             "Zor'da yalnızca Gözlem kullanıldığında açılır. Haritada önceki yanlış tahminlerini görebilirsin.")
+        if self.oyun.uyarlanabilir:
+            self.paragraf(icerik, f"Art arda {DINAMIK_TUR_SERISI} tur çözdüğünde sayı aralığı ve başarısız tur cezası artar. "
+                                 "Uyarlama seviyesi oyun açık kaldığı sürece yeni maceralara taşınır.")
         self.paragraf(icerik, f"Her güçlendiriciyi oyun başına bir kez kullanabilirsin. Zamanı Durdur "
                              f"süreyi {DONDURMA_SURESI} saniye dondurur. Gözlem doğru sayıya en yakın üç adayı "
                              "işaretler. Can Kurtarma bir sonraki başarısız turun puan kaybını önler.")
@@ -233,8 +258,11 @@ class SayiTahminOyunu:
                              f"Zor'da {SEVIYELER['Zor']['hizli_tur_serisi']} hızlı turdan sonra "
                              f"{DINAMIK_SAYI_ADIMI}'nin katları kullanılır.")
         self.etiket(icerik, "Yakınlık aralıkları", 13, "bold", ALTIN).pack(anchor="w", pady=(5, 0))
-        for _, metin, aralik in yakinlik_araliklari():
-            self.etiket(icerik, f"{metin}  ·  {aralik}", boyut=10).pack(anchor="w")
+        self.yakinlik_araligi_etiketleri = []
+        for _ in yakinlik_araliklari():
+            etiket = self.etiket(icerik, boyut=10)
+            etiket.pack(anchor="w")
+            self.yakinlik_araligi_etiketleri.append(etiket)
 
     def galeri_goster(self):
         for widget in self.galeri_icerik.winfo_children():
@@ -243,6 +271,7 @@ class SayiTahminOyunu:
         self.etiket(icerik, "Gezgin profili", 16, "bold", ALTIN).pack(anchor="w")
         try:
             haritalar, rekorlar, zor_galibiyet = self.kayit.galeri()
+            basarilar = self.kayit.basarilar()
         except (OSError, sqlite3.Error):
             self.paragraf(icerik, "Galeri kaydı okunamadı.", KIRMIZI)
         else:
@@ -250,7 +279,7 @@ class SayiTahminOyunu:
             self.paragraf(icerik, f"{galibiyet} tamamlanan macera · {len(haritalar)} kazanılan harita")
             self.etiket(icerik, "Başarılar", 13, "bold", ALTIN).pack(anchor="w", pady=(5, 0))
             for metin, kazanildi in (
-                ("İlk hazine", galibiyet > 0),
+                *((metin, ad in basarilar) for ad, metin in BASARILAR.items()),
                 ("Üç haritayı tamamla", len(haritalar) >= len(SEVIYELER)),
                 ("Zor seviyede kazan", zor_galibiyet > 0),
             ):
@@ -275,12 +304,22 @@ class SayiTahminOyunu:
             self.ekranlar[self.ekran].pack_forget()
         self.ekran = ad
         self.ekranlar[ad].pack(fill="both", expand=True)
+        if ad == "bilgi":
+            for etiket, (_, metin, aralik) in zip(
+                self.yakinlik_araligi_etiketleri, yakinlik_araliklari(self.oyun.adaylar[-1]),
+            ):
+                etiket.configure(text=f"{metin}  ·  {aralik}")
         self.zemini_guncelle()
         self.geri_butonu.pack_forget()
         self.yeni_buton.pack_forget()
         if ad == "oyun":
             self.yeni_buton.pack(side="left")
         elif ad == "menu":
+            zor_acik = self.denetleyici.zor_acik()
+            self.seviye_butonlari["Zor"].configure(state="normal" if zor_acik else "disabled")
+            self.zor_kilit_yazisi.configure(
+                text="Zor seviyeyi açmak için ilk maceranı tamamla." if not zor_acik else "",
+            )
             self.seviye_butonlari["Kolay"].focus_set()
         else:
             metin = "Oyuna dön" if self.donulecek_ekran == "oyun" else "Başlangıca dön"
@@ -294,7 +333,7 @@ class SayiTahminOyunu:
         if self.ekran in ("menu", "oyun"):
             self.donulecek_ekran = self.ekran
         if self.ekran == "oyun":
-            self.oyun.duraklat()
+            self.denetleyici.duraklat()
             self.zamanlayicilari_durdur()
             self.harita.efekt_temizle()
             self.ses.sustur()
@@ -306,7 +345,7 @@ class SayiTahminOyunu:
         self.ekrani_goster(self.donulecek_ekran)
         if self.ekran == "oyun":
             if self.oyun.aktif:
-                self.oyun.surdur()
+                self.denetleyici.surdur()
                 self.giris.focus_set()
                 self.sureyi_guncelle()
             elif not self.oyun.kazanildi:
@@ -329,13 +368,19 @@ class SayiTahminOyunu:
         return "break"
 
     def ses_dugmesini_guncelle(self):
-        durum = "açık" if self.ses.acik else "kapalı"
-        self.ses_butonu.configure(text=f"Oyun sesi {durum}")
+        self.ses_butonu.configure(text=f"Ses %{self.ses.duzey}")
 
     def ses_degistir(self):
-        self.ses.acik = not self.ses.acik
-        if not self.ses.acik:
-            self.ses.sustur()
+        if self.ses_paneli.winfo_manager():
+            self.ses_paneli.pack_forget()
+        else:
+            self.ses_paneli.pack(side="right", before=self.ses_butonu, padx=8)
+
+    def ses_duzeyini_degistir(self, deger):
+        try:
+            self.ses.ses_duzeyini_ayarla(round(float(deger)))
+        except OSError:
+            return
         self.ses_dugmesini_guncelle()
 
     def ilerlemeyi_ciz(self):
@@ -350,18 +395,20 @@ class SayiTahminOyunu:
         canvas = self.sayi_dogrusu
         canvas.delete("all")
         sol, sag, y = 22, max(canvas.winfo_width(), 500) - 22, 23
+        ust_sinir = self.oyun.adaylar[-1]
         canvas.create_line(sol, y, sag, y, fill="#769488", width=2)
-        for deger in range(0, EN_BUYUK_SAYI + 1, 100):
-            x = sol + (sag - sol) * deger / EN_BUYUK_SAYI
+        etiket_adimi = 100 if ust_sinir <= EN_BUYUK_SAYI else 200
+        for deger in range(0, ust_sinir + 1, etiket_adimi):
+            x = sol + (sag - sol) * deger / ust_sinir
             canvas.create_line(x, y - 4, x, y + 4, fill=IKINCIL)
             canvas.create_text(x, y + 15, text=str(deger), fill=IKINCIL, font=("Segoe UI", 8))
         for i, tahmin in enumerate(self.tahmin_isaretleri):
-            x = sol + (sag - sol) * tahmin / EN_BUYUK_SAYI
+            x = sol + (sag - sol) * tahmin / ust_sinir
             renk = ("#7dd3fc", "#c4b5fd", "#f9a8d4")[i % 3]
             canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill=renk, outline="")
             canvas.create_text(x, 12 - (i % 2) * 6, text=str(tahmin), fill=renk, font=("Segoe UI", 8))
         for sayi in self.gozlem_sayilari:
-            x = sol + (sag - sol) * sayi / EN_BUYUK_SAYI
+            x = sol + (sag - sol) * sayi / ust_sinir
             canvas.create_oval(x - 5, y - 5, x + 5, y + 5, outline=ALTIN, width=2)
 
     def sayi_dogrusu_goster(self):
@@ -373,22 +420,30 @@ class SayiTahminOyunu:
         else:
             self.sayi_dogrusu_kutu.pack_forget()
 
-    def oyunu_baslat(self, ad):
+    def oyunu_baslat(self, ad: str) -> None:
         if self.ekran != "menu" or self.oyun.zorluk is not None:
             return
-        self.harita.yeni_rota()
-        self.oyun.baslat(ad)
-        self.seviye_yazisi.configure(text=f"{SEVIYELER[ad]['harita']}  ·  {ad}")
-        self.ekrani_goster("oyun")
-        self.turu_goster()
+        self.denetleyici.baslat(ad)
 
-    def yeni_tur(self):
+    def yeni_tur(self) -> None:
         self.tur_zamanlayicisi = None
-        self.oyun.yeni_tur()
-        self.turu_goster()
+        self.denetleyici.yeni_tur()
 
-    def turu_goster(self):
+    def oyun_olayini_goster(self, olay: TurBasladi | TahminDegerlendirildi) -> None:
+        if isinstance(olay, TurBasladi):
+            if self.oyun.tur == 1:
+                self.harita.yeni_rota()
+                ad = self.oyun.zorluk
+                self.seviye_yazisi.configure(text=f"{SEVIYELER[ad]['harita']}  ·  {ad}")
+                self.ekrani_goster("oyun")
+            self.turu_goster()
+        else:
+            self.tahmin_sonucunu_goster(olay)
+
+    def turu_goster(self) -> None:
         self.tahmin_isaretleri.clear()
+        self.harita.tahmin_izlerini_temizle()
+        self.basari_yazisi.pack_forget()
         self.gozlem_sayilari = ()
         self.sonraki_kalp_sesi = 0
         self.sayi_dogrusu_goster()
@@ -401,17 +456,21 @@ class SayiTahminOyunu:
         self.durum_guncelle()
         self.sureyi_guncelle()
 
-    def gecerli_sayilar(self):
+    def gecerli_sayilar(self) -> str:
         ek = "un" if self.oyun.adim == SAYI_ADIMI else "nin"
-        return f"{self.oyun.adaylar.start}–{EN_BUYUK_SAYI} arası  ·  {self.oyun.adim}'{ek} katları"
+        return f"{self.oyun.adaylar.start}–{self.oyun.adaylar[-1]} arası  ·  {self.oyun.adim}'{ek} katları"
 
     def durum_guncelle(self):
         self.durum.configure(text=f"{self.oyun.toplam} / {HEDEF_PUAN} puan")
         self.zemini_guncelle()
         self.harita.ciz(self.oyun.toplam)
+        self.hikaye_yazisi.configure(text=self.denetleyici.hikaye())
         self.ilerlemeyi_ciz()
         kalkan = "   ·   Can Kurtarma etkin" if self.oyun.kalkan_aktif else ""
-        self.istatistik.configure(text=f"{self.oyun.kalan_hak} tahmin   ·   {self.oyun.kalan_ipucu} ipucu{kalkan}")
+        uyarlama = f"   ·   Başarısız tur −{self.oyun.tur_cezasi} puan" if self.oyun.dinamik_seviye else ""
+        self.istatistik.configure(
+            text=f"{self.oyun.kalan_hak} tahmin   ·   {self.oyun.kalan_ipucu} ipucu{kalkan}{uyarlama}",
+        )
         durum = "normal" if self.oyun.aktif else "disabled"
         self.tahmin_buton.configure(state=durum)
         self.ipucu_buton.configure(state=durum)
@@ -420,10 +479,12 @@ class SayiTahminOyunu:
 
     def zemini_guncelle(self):
         if self.ekran == "oyun":
-            durak = next(durak for durak in reversed(DURAKLAR) if durak["puan"] <= self.oyun.toplam)
+            durak = self.denetleyici.bolge()
             self.sahne.bolge_sec(durak.get("resim"), durak.get("yatay_odak", 0.5))
+            self.ses.ortam_degistir(durak["ad"])
         else:
             self.sahne.bolge_sec(None)
+            self.ses.ortam_degistir(None)
 
     def sureyi_guncelle(self):
         self.sure_zamanlayicisi = None
@@ -448,17 +509,16 @@ class SayiTahminOyunu:
             metin += f" · Süre {ceil(donma)} saniye durdu"
         self.sure_yazisi.configure(text=metin, fg=YESIL if donma else KIRMIZI if kalan <= 8 else ALTIN)
 
-    def sureyi_denetle(self):
-        sonuc = self.oyun.sureyi_kontrol_et()
-        if sonuc:
-            self.basarisiz_tur(sonuc)
-        return sonuc is None
+    def sureyi_denetle(self) -> bool:
+        return self.denetleyici.sureyi_denetle()
 
-    def tahmin_et(self):
+    def tahmin_et(self) -> None:
         if self.ekran != "oyun" or not self.oyun.aktif:
             return
-        metin = self.giris.get().strip()
-        sonuc = self.oyun.tahmin_et(metin)
+        self.denetleyici.tahmin_et(self.giris.get())
+
+    def tahmin_sonucunu_goster(self, olay: TahminDegerlendirildi) -> None:
+        sonuc = olay.sonuc
         if sonuc.durum == "gecersiz_tamsayi":
             self.bildirim("Tam sayı gir. Tahmin hakkın azalmadı.", ALTIN)
             return
@@ -472,17 +532,29 @@ class SayiTahminOyunu:
             self.basarisiz_tur(sonuc)
             return
 
-        gosterilen = SEVIYELER[self.oyun.zorluk]["gosterilen_tahmin"]
-        if gosterilen:
-            self.tahmin_isaretleri.append(int(metin))
-            self.tahmin_isaretleri[:] = self.tahmin_isaretleri[-gosterilen:]
-        self.sayi_dogrusu_ciz()
+        if sonuc.sayi is not None:
+            gosterilen = SEVIYELER[self.oyun.zorluk]["gosterilen_tahmin"]
+            if gosterilen:
+                self.tahmin_isaretleri.append(sonuc.sayi)
+                self.tahmin_isaretleri[:] = self.tahmin_isaretleri[-gosterilen:]
+            if sonuc.durum in ("yanlis", "bitti"):
+                self.harita.tahmin_izi_ekle(sonuc.sayi)
+            self.sayi_dogrusu_ciz()
         self.giris.delete(0, "end")
         if sonuc.durum == "dogru":
             self.bildirim(f"Doğru! Sayı {self.oyun.hedef}. +{sonuc.puan} puan.", YESIL)
+            self.tur_bitti(kazanilan_puan=sonuc.puan, kayit_hatasi=olay.kayit_hatasi)
             self.ses_cal("dogru")
-            self.tur_bitti()
-            self.harita.konfeti()
+            self.harita.parilti()
+            if self.oyun.kazanildi:
+                self.harita.konfeti()
+            if olay.yeni_basarilar:
+                metin = " · ".join(BASARILAR[ad] for ad in olay.yeni_basarilar)
+                self.basari_yazisi.configure(text=f"Başarı açıldı · {metin}")
+                self.basari_yazisi.pack(after=self.istatistik)
+            elif olay.kayit_hatasi and not self.oyun.kazanildi:
+                self.basari_yazisi.configure(text="Başarı kaydı yazılamadı.")
+                self.basari_yazisi.pack(after=self.istatistik)
         elif sonuc.durum == "bitti":
             self.ses_cal("tahmin")
             self.basarisiz_tur(sonuc)
@@ -490,13 +562,12 @@ class SayiTahminOyunu:
             yon = "↑ Daha büyük bir sayı dene." if sonuc.yon == "buyuk" else "↓ Daha küçük bir sayı dene."
             self.bildirim(yon, yakinlik=sonuc.yakinlik, aralik=sonuc.yakinlik_araligi)
             self.durum_guncelle()
-            self.harita.sars()
             self.ses_cal("tahmin")
 
     def ipucu_kullan(self):
         if self.ekran != "oyun" or not self.oyun.aktif or not self.sureyi_denetle():
             return
-        ipucu = self.oyun.ipucu_kullan()
+        ipucu = self.denetleyici.ipucu_kullan()
         if not ipucu:
             self.bildirim("Bu turda ipucu hakkın kalmadı.", ALTIN)
             return
@@ -507,7 +578,7 @@ class SayiTahminOyunu:
     def guclendirici_kullan(self, ad):
         if self.ekran != "oyun" or not self.oyun.aktif or not self.sureyi_denetle():
             return
-        sonuc = self.oyun.guclendirici_kullan(ad)
+        sonuc = self.denetleyici.guclendirici_kullan(ad)
         if sonuc is None:
             return
         if ad == "gozlem":
@@ -551,9 +622,10 @@ class SayiTahminOyunu:
         puan = f"−{-sonuc.puan} puan." if sonuc.puan else "Puan kaybı olmadı."
         self.bildirim(f"{neden} Sayı {self.oyun.hedef} idi. {puan}", KIRMIZI)
         self.tur_bitti()
-        self.harita.sars()
+        if sonuc.puan < 0:
+            self.harita.sars()
 
-    def tur_bitti(self):
+    def tur_bitti(self, *, kazanilan_puan: int = 0, kayit_hatasi: bool = False) -> None:
         self.zamanlayicilari_durdur()
         self.giris.configure(state="disabled")
         self.sure_yazisi.configure(text="")
@@ -562,10 +634,8 @@ class SayiTahminOyunu:
             self.tur_zamanlayicisi = self.pencere.after(2100, self.yeni_tur)
             return
         ayar = SEVIYELER[self.oyun.zorluk]
-        mesaj = f"Hazineyi buldun! {ayar['son']}"
-        try:
-            self.kayit.kaydet(self.oyun.zorluk, ayar["harita"], self.oyun.toplam, self.oyun.tur)
-        except (OSError, sqlite3.Error):
+        mesaj = f"Hazineyi buldun! +{kazanilan_puan} puan. {ayar['son']}"
+        if kayit_hatasi:
             mesaj += "\nGaleri kaydı yazılamadı."
         self.bildirim(mesaj, ALTIN)
         self.gucler.pack_forget()
@@ -590,7 +660,8 @@ class SayiTahminOyunu:
         self.harita.efekt_temizle()
         self.ses.sustur()
         self.tekrar_butonu.pack_forget()
-        self.oyun.sifirla()
+        self.harita.tahmin_izlerini_temizle()
+        self.denetleyici.sifirla()
         self.ekrani_goster("menu")
 
     def kapat(self):
